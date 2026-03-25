@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sycamore CSD Transportation Network Analysis</title>
+    <style>
+      :root {
+        --bg: #f6f8fb;
+        --card: #ffffff;
+        --text: #1f2937;
+        --muted: #4b5563;
+        --accent: #0f766e;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #eef8ff, var(--bg));
+        color: var(--text);
+      }
+
+      main {
+        max-width: 860px;
+        margin: 0 auto;
+        padding: 3rem 1rem;
+      }
+
+      h1 {
+        margin: 0 0 0.5rem;
+      }
+
+      p {
+        color: var(--muted);
+        line-height: 1.6;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1rem;
+        margin-top: 1.5rem;
+      }
+
+      .card {
+        background: var(--card);
+        border-radius: 12px;
+        padding: 1.2rem;
+        box-shadow: 0 8px 28px rgba(15, 23, 42, 0.08);
+      }
+
+      .card a {
+        color: var(--accent);
+        font-weight: 600;
+        text-decoration: none;
+      }
+
+      .card a:hover {
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Sycamore CSD Transportation Network Analysis</h1>
+      <p>
+        Published visualizations from the graph-theoretic analysis of school
+        transportation infrastructure.
+      </p>
+
+      <section class="grid">
+        <article class="card">
+          <h2>Bus Network Centrality</h2>
+          <p>Interactive centrality visualization for the bus transportation graph.</p>
+          <a href="./bus-network-centrality.html">Open visualization</a>
+        </article>
+
+        <article class="card">
+          <h2>SJH Network Visualization</h2>
+          <p>Interactive view of the SJH network topology and connectivity.</p>
+          <a href="./sjh_network_viz.html">Open visualization</a>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
