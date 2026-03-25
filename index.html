@@ -1,15 +1,327 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta http-equiv="refresh" content="0; url=./sjh_network_viz.html" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Redirecting to SJH Network Visualization</title>
-  </head>
-  <body>
-    <p>
-      Redirecting to the SJH network visualization.
-      <a href="./sjh_network_viz.html">Open the page</a>
-    </p>
-  </body>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SJH Transit Network — Centrality Analysis</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+:root {
+  --bg:     #f5f3ee;
+  --paper:  #faf9f6;
+  --ink:    #1a1714;
+  --ink2:   #4a4540;
+  --ink3:   #8a8580;
+  --rule:   #d8d4ce;
+  --mono:   'IBM Plex Mono', monospace;
+  --sans:   'IBM Plex Sans', system-ui, sans-serif;
+  /* BC — red/amber scale */
+  --bc-crit: #c0392b;
+  --bc-high: #e67e22;
+  --bc-low:  #d8c4b0;
+  /* PR — blue scale */
+  --pr-crit: #1a4a8a;
+  --pr-high: #2980b9;
+  --pr-low:  #b8c8de;
+  /* EV — green scale */
+  --ev-crit: #1e7e4a;
+  --ev-high: #27ae60;
+  --ev-low:  #b8d8c0;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; background: var(--bg); font-family: var(--sans); overflow-x: hidden; }
+
+/* ── Header ── */
+.header {
+  display: flex; align-items: baseline; gap: 24px;
+  padding: 18px 28px 14px;
+  border-bottom: 2px solid var(--ink);
+  background: var(--paper);
+}
+.header-title {
+  font-family: var(--mono); font-size: .9rem; font-weight: 600;
+  letter-spacing: .05em; color: var(--ink); text-transform: uppercase;
+}
+.header-meta {
+  font-family: var(--mono); font-size: .72rem; color: var(--ink3);
+  letter-spacing: .04em;
+}
+
+/* ── Three-panel layout ── */
+.panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  height: calc(100vh - 112px);
+  min-height: 580px;
+}
+.panel {
+  border-right: 1px solid var(--rule);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+.panel:last-child { border-right: none; }
+
+/* ── Panel header ── */
+.panel-head {
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid var(--rule);
+  background: var(--paper);
+  flex-shrink: 0;
+}
+.panel-name {
+  font-family: var(--mono); font-size: .85rem; font-weight: 600;
+  color: var(--ink); letter-spacing: .03em;
+}
+.panel-desc {
+  font-family: var(--sans); font-size: .72rem; color: var(--ink3);
+  margin-top: 3px; line-height: 1.4;
+}
+.panel-badge {
+  display: inline-block; margin-top: 8px;
+  font-family: var(--mono); font-size: .7rem; font-weight: 500;
+  padding: 3px 10px; border-radius: 2px; letter-spacing: .04em;
+}
+.bc-badge { background:#fde8e8; color:#8b1a1a; }
+.pr-badge { background:#e8f0fd; color:#1a3a7a; }
+.ev-badge { background:#e8fdf0; color:#1a5a2a; }
+
+/* ── SVG canvas ── */
+.panel-canvas {
+  flex: 1; overflow: hidden; position: relative;
+}
+svg { width: 100%; height: 100%; }
+
+/* ── Tooltip ── */
+.tooltip {
+  position: fixed; pointer-events: none;
+  background: var(--ink); color: #faf9f6;
+  font-family: var(--mono); font-size: .72rem;
+  padding: 8px 12px; border-radius: 2px;
+  line-height: 1.6; z-index: 100;
+  opacity: 0; transition: opacity .15s;
+  max-width: 220px;
+}
+
+/* ── Legend bar ── */
+.legend-bar {
+  display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+  padding: 10px 18px;
+  border-top: 1px solid var(--rule);
+  background: var(--paper);
+  font-family: var(--mono); font-size: .68rem; color: var(--ink3);
+  letter-spacing: .04em; flex-shrink: 0;
+}
+.legend-item { display: flex; align-items: center; gap: 6px; }
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <span class="header-title">SJH Transit Network — Centrality Analysis</span>
+  <span class="header-meta">221 nodes · 545 edges · 74 routes · verified graph v3.1 · GDS scores</span>
+</div>
+
+<div class="panels">
+  <!-- BC -->
+  <div class="panel" id="panel-bc">
+    <div class="panel-head">
+      <div class="panel-name">Betweenness Centrality</div>
+      <div class="panel-desc">Nodes lying on the most shortest paths between all pairs. High BC = routing chokepoint.</div>
+      <span class="panel-badge bc-badge">▲ MONTGOMERY CREEK BRIDGE &nbsp; BC=1.000</span>
+    </div>
+    <div class="panel-canvas"><svg id="svg-bc"></svg></div>
+    <div class="legend-bar">
+      <div class="legend-item"><div class="legend-dot" style="background:#c0392b;"></div>Critical (&gt;0.60)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#e67e22;"></div>High (0.30–0.60)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#1a1714;"></div>School</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#d8c4b0;"></div>Low</div>
+    </div>
+  </div>
+
+  <!-- PR -->
+  <div class="panel" id="panel-pr">
+    <div class="panel-head">
+      <div class="panel-name">PageRank</div>
+      <div class="panel-desc">Nodes receiving flow from other important nodes. High PR = downstream convergence point.</div>
+      <span class="panel-badge pr-badge">▲ COOPER &amp; DELRAY (SJH ENTRANCE) &nbsp; PR=1.000</span>
+    </div>
+    <div class="panel-canvas"><svg id="svg-pr"></svg></div>
+    <div class="legend-bar">
+      <div class="legend-item"><div class="legend-dot" style="background:#1a4a8a;"></div>Critical (&gt;0.40)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#2980b9;"></div>High (0.15–0.40)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#1a1714;"></div>School</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#b8c8de;"></div>Low</div>
+    </div>
+  </div>
+
+  <!-- EV -->
+  <div class="panel" id="panel-ev">
+    <div class="panel-head">
+      <div class="panel-name">Eigenvector Centrality</div>
+      <div class="panel-desc">Nodes connected to other well-connected nodes. High EV = structurally embedded hub.</div>
+      <span class="panel-badge ev-badge">▲ COOPER &amp; DELRAY (SJH ENTRANCE) &nbsp; EV=1.000</span>
+    </div>
+    <div class="panel-canvas"><svg id="svg-ev"></svg></div>
+    <div class="legend-bar">
+      <div class="legend-item"><div class="legend-dot" style="background:#1e7e4a;"></div>Critical (&gt;0.25)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#27ae60;"></div>High (0.05–0.25)</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#1a1714;"></div>School</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#b8d8c0;"></div>Low</div>
+    </div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+const VIZ_NODES = [{"id": "BRG_KENWOOD_CREEK", "label": "Bridge", "name": "Kenwood Creek", "bc": 0.5693, "pr": 0.4616, "ev": 0.3147, "lat": 0, "lng": 0}, {"id": "INT_BLUEWING_GLENDALE_MILFORD", "label": "Intersection", "name": "Bluewing Glendale Milford", "bc": 0.0241, "pr": 0.0179, "ev": 0.0032, "lat": 0, "lng": 0}, {"id": "INT_REED_HARTMAN_GM", "label": "Intersection", "name": "Reed Hartman Gm", "bc": 0.2952, "pr": 0.1197, "ev": 0.004, "lat": 0, "lng": 0}, {"id": "NBH_SYMMES_TOWNSHIP_NE", "label": "Neighborhood", "name": "Symmes Township Ne", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_GOVERNORS_PLAZA_II", "label": "Neighborhood", "name": "Governors Plaza Ii", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_LIBERTY_HILL_AREA", "label": "Neighborhood", "name": "Liberty Hill Area", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_MITCHELL_FARM", "label": "Neighborhood", "name": "Mitchell Farm", "bc": 0, "pr": 0.0097, "ev": 0.0002, "lat": 0, "lng": 0}, {"id": "NBH_SYMMES_STATION_AREA", "label": "Neighborhood", "name": "Symmes Station Area", "bc": 0, "pr": 0.0097, "ev": 0.0003, "lat": 0, "lng": 0}, {"id": "NBH_KEMPER_MEADOWS", "label": "Neighborhood", "name": "Kemper Meadows", "bc": 0, "pr": 0.0097, "ev": 0.0002, "lat": 0, "lng": 0}, {"id": "NBH_MASON_MONTGOMERY_CORRIDOR", "label": "Neighborhood", "name": "Mason Montgomery Corridor", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_TREEBROOK", "label": "Neighborhood", "name": "Treebrook", "bc": 0, "pr": 0.0097, "ev": 0.0015, "lat": 0, "lng": 0}, {"id": "NBH_BLUE_ASH_SOUTH_BOUNDARY", "label": "Neighborhood", "name": "Blue Ash South Boundary", "bc": 0, "pr": 0.0097, "ev": 0.0503, "lat": 0, "lng": 0}, {"id": "NBH_SYCAMORE_HS_AREA", "label": "Neighborhood", "name": "Sycamore Hs Area", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "INT_REED_HARTMAN_CORNELL", "label": "Intersection", "name": "Reed Hartman Cornell", "bc": 0.1084, "pr": 0.0708, "ev": 0.0015, "lat": 0, "lng": 0}, {"id": "INT_IVYGATE_MONTGOMERY", "label": "Intersection", "name": "Ivygate Montgomery", "bc": 0.0151, "pr": 0.0179, "ev": 0.0005, "lat": 0, "lng": 0}, {"id": "BRG_MONTGOMERY_CREEK", "label": "Bridge", "name": "Montgomery Creek", "bc": 1.0, "pr": 0.4688, "ev": 0.033, "lat": 0, "lng": 0}, {"id": "BRG_GM_I275", "label": "Bridge", "name": "Gm I275", "bc": 0.3193, "pr": 0.1419, "ev": 0.0292, "lat": 0, "lng": 0}, {"id": "NBH_MONTGOMERY_FARMS", "label": "Neighborhood", "name": "Montgomery Farms", "bc": 0, "pr": 0.0097, "ev": 0.0003, "lat": 0, "lng": 0}, {"id": "INT_COOPER_DELRAY", "label": "Intersection", "name": "Cooper Delray", "bc": 0.6476, "pr": 1.0, "ev": 1.0, "lat": 0, "lng": 0}, {"id": "BRG_CORNELL_CREEK", "label": "Bridge", "name": "Cornell Creek", "bc": 0.1205, "pr": 0.0719, "ev": 0.0002, "lat": 0, "lng": 0}, {"id": "NBH_BLUE_ASH_BUSINESS_DISTRICT", "label": "Neighborhood", "name": "Blue Ash Business District", "bc": 0, "pr": 0.0097, "ev": 0.0034, "lat": 0, "lng": 0}, {"id": "NBH_GLENDALE_MILFORD_CORRIDOR", "label": "Neighborhood", "name": "Glendale Milford Corridor", "bc": 0, "pr": 0.0097, "ev": 0.0031, "lat": 0, "lng": 0}, {"id": "NBH_CALUMET_AREA", "label": "Neighborhood", "name": "Calumet Area", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "SJH", "label": "School", "name": "Sjh", "bc": 0.0, "pr": 0.8764, "ev": 0.5577, "lat": 0, "lng": 0}, {"id": "BRG_MASON_MONTGOMERY_I275", "label": "Bridge", "name": "Mason Montgomery I275", "bc": 0.0633, "pr": 0.0303, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_EUCLID_ESTATES", "label": "Neighborhood", "name": "Euclid Estates", "bc": 0, "pr": 0.0097, "ev": 0.0459, "lat": 0, "lng": 0}, {"id": "NBH_SHARON_ROAD_AREA", "label": "Neighborhood", "name": "Sharon Road Area", "bc": 0, "pr": 0.0097, "ev": 0.0015, "lat": 0, "lng": 0}, {"id": "INT_COOPER_VILLAGE_GREEN", "label": "Intersection", "name": "Cooper Village Green", "bc": 0.0181, "pr": 0.0262, "ev": 0.0037, "lat": 0, "lng": 0}, {"id": "NBH_SOLZMAN_ESTATES", "label": "Neighborhood", "name": "Solzman Estates", "bc": 0, "pr": 0.0097, "ev": 0.0461, "lat": 0, "lng": 0}, {"id": "NBH_READING_ROAD_CORRIDOR", "label": "Neighborhood", "name": "Reading Road Corridor", "bc": 0, "pr": 0.0097, "ev": 0.0013, "lat": 0, "lng": 0}, {"id": "INT_KEMPER_MONTGOMERY", "label": "Intersection", "name": "Kemper Montgomery", "bc": 0.7229, "pr": 0.3021, "ev": 0.0081, "lat": 0, "lng": 0}, {"id": "NBH_KELLER_FARMS", "label": "Neighborhood", "name": "Keller Farms", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "INT_KENWOOD_COOPER", "label": "Intersection", "name": "Kenwood Cooper", "bc": 0.3856, "pr": 0.4021, "ev": 0.482, "lat": 0, "lng": 0}, {"id": "NBH_BLUE_ASH_NE", "label": "Neighborhood", "name": "Blue Ash Ne", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_MARINERS_COVE_AREA", "label": "Neighborhood", "name": "Mariners Cove Area", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_HARBORTOWN_DR_AREA", "label": "Neighborhood", "name": "Harbortown Dr Area", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_INDIANWOODS", "label": "Neighborhood", "name": "Indianwoods", "bc": 0, "pr": 0.0097, "ev": 0.0002, "lat": 0, "lng": 0}, {"id": "INT_ASHLEY_KENWOOD", "label": "Intersection", "name": "Ashley Kenwood", "bc": 0.012, "pr": 0.0179, "ev": 0.4144, "lat": 0, "lng": 0}, {"id": "NBH_SHARONDALE", "label": "Neighborhood", "name": "Sharondale", "bc": 0, "pr": 0.0097, "ev": 0.0459, "lat": 0, "lng": 0}, {"id": "INT_WILLIAMSON_CORNELL", "label": "Intersection", "name": "Williamson Cornell", "bc": 0.0181, "pr": 0.0179, "ev": 0.0001, "lat": 0, "lng": 0}, {"id": "NBH_I_71_EXIT_15_CORRIDOR", "label": "Neighborhood", "name": "I 71 Exit 15 Corridor", "bc": 0, "pr": 0.0097, "ev": 0.0182, "lat": 0, "lng": 0}, {"id": "INT_ZIG_ZAG_KENWOOD", "label": "Intersection", "name": "Zig Zag Kenwood", "bc": 0.1084, "pr": 0.0697, "ev": 0.4179, "lat": 0, "lng": 0}, {"id": "NBH_SYCAMORE_TOWNSHIP_SW", "label": "Neighborhood", "name": "Sycamore Township Sw", "bc": 0, "pr": 0.0097, "ev": 0.0918, "lat": 0, "lng": 0}, {"id": "INT_GOVERNORS_HILL_FIELDS_ERTEL", "label": "Intersection", "name": "Governors Hill Fields Ertel", "bc": 0.0542, "pr": 0.0262, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_DOWNTOWN_BLUE_ASH", "label": "Neighborhood", "name": "Downtown Blue Ash", "bc": 0, "pr": 0.0097, "ev": 0.3977, "lat": 0, "lng": 0}, {"id": "NBH_PRINCETON_CSD_BORDER", "label": "Neighborhood", "name": "Princeton Csd Border", "bc": 0, "pr": 0.0097, "ev": 0.0013, "lat": 0, "lng": 0}, {"id": "NBH_BLUEWING_TE_AREA", "label": "Neighborhood", "name": "Bluewing Te Area", "bc": 0, "pr": 0.0097, "ev": 0.0012, "lat": 0, "lng": 0}, {"id": "INT_BRAMBLEWOOD_KENWOOD", "label": "Intersection", "name": "Bramblewood Kenwood", "bc": 0.012, "pr": 0.0179, "ev": 0.4144, "lat": 0, "lng": 0}, {"id": "NBH_HOPEWELL_MEADOWS", "label": "Neighborhood", "name": "Hopewell Meadows", "bc": 0, "pr": 0.0097, "ev": 0.0003, "lat": 0, "lng": 0}, {"id": "NBH_SYMMES_TOWNSHIP_W", "label": "Neighborhood", "name": "Symmes Township W", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "INT_PFEIFFER_KENWOOD", "label": "Intersection", "name": "Pfeiffer Kenwood", "bc": 0.0361, "pr": 0.0319, "ev": 0.0691, "lat": 0, "lng": 0}, {"id": "NBH_EASTERN_HILLS_GOLF_CLUB_AREA", "label": "Neighborhood", "name": "Eastern Hills Golf Club Area", "bc": 0, "pr": 0.0097, "ev": 0.0439, "lat": 0, "lng": 0}, {"id": "NBH_I_71_CORRIDOR", "label": "Neighborhood", "name": "I 71 Corridor", "bc": 0, "pr": 0.0097, "ev": 0.0503, "lat": 0, "lng": 0}, {"id": "INT_CARPENTERS_COOPER", "label": "Intersection", "name": "Carpenters Cooper", "bc": 0.0181, "pr": 0.0262, "ev": 0.0037, "lat": 0, "lng": 0}, {"id": "NBH_STEEPLECHASE", "label": "Neighborhood", "name": "Steeplechase", "bc": 0, "pr": 0.0097, "ev": 0.0022, "lat": 0, "lng": 0}, {"id": "NBH_BLUE_ASH_CORPORATE_PARK", "label": "Neighborhood", "name": "Blue Ash Corporate Park", "bc": 0, "pr": 0.0097, "ev": 0.3977, "lat": 0, "lng": 0}, {"id": "NBH_CREEK_RD_AREA", "label": "Neighborhood", "name": "Creek Rd Area", "bc": 0, "pr": 0.0097, "ev": 0.0012, "lat": 0, "lng": 0}, {"id": "NBH_EVENDALE_FRINGE", "label": "Neighborhood", "name": "Evendale Fringe", "bc": 0, "pr": 0.0097, "ev": 0.0046, "lat": 0, "lng": 0}, {"id": "INT_LOVELAND_MADEIRA_HOPEWELL", "label": "Intersection", "name": "Loveland Madeira Hopewell", "bc": 0.1627, "pr": 0.0814, "ev": 0.0009, "lat": 0, "lng": 0}, {"id": "NBH_SHS_CAMPUS_NEIGHBORHOOD", "label": "Neighborhood", "name": "Shs Campus Neighborhood", "bc": 0, "pr": 0.0097, "ev": 0.0002, "lat": 0, "lng": 0}, {"id": "INT_MONTGOMERY_MITCHELLFARM", "label": "Intersection", "name": "Montgomery Mitchellfarm", "bc": 0.0453, "pr": 0.0465, "ev": 0.002, "lat": 0, "lng": 0}, {"id": "NBH_GOVERNORS_PLAZA", "label": "Neighborhood", "name": "Governors Plaza", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "INT_SCHOOL_RD_KENWOOD", "label": "Intersection", "name": "School Rd Kenwood", "bc": 0.0241, "pr": 0.0262, "ev": 0.4326, "lat": 0, "lng": 0}, {"id": "NBH_HISTORIC_MONTGOMERY", "label": "Neighborhood", "name": "Historic Montgomery", "bc": 0, "pr": 0.0097, "ev": 0.0002, "lat": 0, "lng": 0}, {"id": "BRG_PFEIFFER_CREEK", "label": "Bridge", "name": "Pfeiffer Creek", "bc": 0.0301, "pr": 0.0262, "ev": 0.0329, "lat": 0, "lng": 0}, {"id": "NBH_EVENDALE_NW", "label": "Neighborhood", "name": "Evendale Nw", "bc": 0, "pr": 0.0097, "ev": 0.0013, "lat": 0, "lng": 0}, {"id": "BRG_ZIG_ZAG_CREEK", "label": "Bridge", "name": "Zig Zag Creek", "bc": 0.1205, "pr": 0.0706, "ev": 0.051, "lat": 0, "lng": 0}, {"id": "NBH_BETHESDA_NORTH_AREA", "label": "Neighborhood", "name": "Bethesda North Area", "bc": 0, "pr": 0.0097, "ev": 0.0006, "lat": 0, "lng": 0}, {"id": "NBH_CARVER_WOODS_AREA", "label": "Neighborhood", "name": "Carver Woods Area", "bc": 0, "pr": 0.0097, "ev": 0.042, "lat": 0, "lng": 0}, {"id": "INT_COOPER_REED_HARTMAN", "label": "Intersection", "name": "Cooper Reed Hartman", "bc": 0.2229, "pr": 0.1969, "ev": 0.1887, "lat": 0, "lng": 0}, {"id": "NBH_BLUE_ASH_SUMMIT", "label": "Neighborhood", "name": "Blue Ash Summit", "bc": 0, "pr": 0.0097, "ev": 0.0025, "lat": 0, "lng": 0}, {"id": "NBH_REED_HARTMAN_ESTATES", "label": "Neighborhood", "name": "Reed Hartman Estates", "bc": 0, "pr": 0.0097, "ev": 0.0015, "lat": 0, "lng": 0}, {"id": "INT_CALUMET_SNIDER", "label": "Intersection", "name": "Calumet Snider", "bc": 0.0633, "pr": 0.0344, "ev": 0.0001, "lat": 0, "lng": 0}, {"id": "NBH_CHCA_CAMPUS_AREA", "label": "Neighborhood", "name": "Chca Campus Area", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_ORCHARD_CLUB", "label": "Neighborhood", "name": "Orchard Club", "bc": 0, "pr": 0.0097, "ev": 0.0008, "lat": 0, "lng": 0}, {"id": "INT_SNIDER_KEMPER", "label": "Intersection", "name": "Snider Kemper", "bc": 0.7591, "pr": 0.2571, "ev": 0.0003, "lat": 0, "lng": 0}, {"id": "BRG_FIELDS_ERTEL_CREEK", "label": "Bridge", "name": "Fields Ertel Creek", "bc": 0.6989, "pr": 0.2149, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_SYMMES_TOWNSHIP_NW", "label": "Neighborhood", "name": "Symmes Township Nw", "bc": 0, "pr": 0.0097, "ev": 0.0002, "lat": 0, "lng": 0}, {"id": "NBH_MAPLE_DALE_ELEMENTARY_AREA", "label": "Neighborhood", "name": "Maple Dale Elementary Area", "bc": 0, "pr": 0.0097, "ev": 0.0011, "lat": 0, "lng": 0}, {"id": "NBH_BLUE_ASH_WEST", "label": "Neighborhood", "name": "Blue Ash West", "bc": 0, "pr": 0.0097, "ev": 0.0002, "lat": 0, "lng": 0}, {"id": "NBH_BLUE_ASH_TECH_CORRIDOR", "label": "Neighborhood", "name": "Blue Ash Tech Corridor", "bc": 0, "pr": 0.0097, "ev": 0.0015, "lat": 0, "lng": 0}, {"id": "NBH_ORCHARD_CLUB_ADJACENT", "label": "Neighborhood", "name": "Orchard Club Adjacent", "bc": 0, "pr": 0.0097, "ev": 0.0022, "lat": 0, "lng": 0}, {"id": "NBH_GREGORY_LN_AREA", "label": "Neighborhood", "name": "Gregory Ln Area", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_BLUE_ASH_EAST", "label": "Neighborhood", "name": "Blue Ash East", "bc": 0, "pr": 0.0097, "ev": 0.0001, "lat": 0, "lng": 0}, {"id": "INT_CONREY_REED_HARTMAN", "label": "Intersection", "name": "Conrey Reed Hartman", "bc": 0.0241, "pr": 0.0262, "ev": 0.0016, "lat": 0, "lng": 0}, {"id": "INT_SUMMIT_PARK_COOPER", "label": "Intersection", "name": "Summit Park Cooper", "bc": 0.012, "pr": 0.0262, "ev": 0.0242, "lat": 0, "lng": 0}, {"id": "INT_KUGLER_MILL_CORNELL", "label": "Intersection", "name": "Kugler Mill Cornell", "bc": 0.0361, "pr": 0.0262, "ev": 0.0001, "lat": 0, "lng": 0}, {"id": "NBH_BLUE_ASH_SR_126_CORRIDOR", "label": "Neighborhood", "name": "Blue Ash Sr 126 Corridor", "bc": 0, "pr": 0.0097, "ev": 0.0182, "lat": 0, "lng": 0}, {"id": "INT_KENWOOD_BLUE_ASH_RD", "label": "Intersection", "name": "Kenwood Blue Ash Rd", "bc": 0.0181, "pr": 0.022, "ev": 0.4524, "lat": 0, "lng": 0}, {"id": "NBH_BLUE_ASH_SOUTH", "label": "Neighborhood", "name": "Blue Ash South", "bc": 0, "pr": 0.0097, "ev": 0.0026, "lat": 0, "lng": 0}, {"id": "INT_MONTGOMERY_DEERFIELD", "label": "Intersection", "name": "Montgomery Deerfield", "bc": 0.0301, "pr": 0.022, "ev": 0.0005, "lat": 0, "lng": 0}, {"id": "NBH_UNION_CEMETERY_AREA", "label": "Neighborhood", "name": "Union Cemetery Area", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_SYCAMORE_TOWNSHIP_NW", "label": "Neighborhood", "name": "Sycamore Township Nw", "bc": 0, "pr": 0.0097, "ev": 0.0439, "lat": 0, "lng": 0}, {"id": "NBH_KEN_ARBRE_ESTATES", "label": "Neighborhood", "name": "Ken Arbre Estates", "bc": 0, "pr": 0.0097, "ev": 0.0459, "lat": 0, "lng": 0}, {"id": "INT_MONROE_KENWOOD", "label": "Intersection", "name": "Monroe Kenwood", "bc": 0.012, "pr": 0.0179, "ev": 0.4144, "lat": 0, "lng": 0}, {"id": "NBH_GROOMS_ROAD_AREA", "label": "Neighborhood", "name": "Grooms Road Area", "bc": 0, "pr": 0.0097, "ev": 0.0013, "lat": 0, "lng": 0}, {"id": "INT_KEN_ARBRE_KENWOOD", "label": "Intersection", "name": "Ken Arbre Kenwood", "bc": 0.0181, "pr": 0.022, "ev": 0.4524, "lat": 0, "lng": 0}, {"id": "NBH_GALBRAITH_CORRIDOR", "label": "Neighborhood", "name": "Galbraith Corridor", "bc": 0, "pr": 0.0097, "ev": 0.0503, "lat": 0, "lng": 0}, {"id": "NBH_SYCAMORE_HIGH_SCHOOL_AREA", "label": "Neighborhood", "name": "Sycamore High School Area", "bc": 0, "pr": 0.0097, "ev": 0.0001, "lat": 0, "lng": 0}, {"id": "NBH_SYMMES_TOWNSHIP_S", "label": "Neighborhood", "name": "Symmes Township S", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_VILLAGE_GREEN", "label": "Neighborhood", "name": "Village Green", "bc": 0, "pr": 0.0097, "ev": 0.0015, "lat": 0, "lng": 0}, {"id": "INT_FOXHUNTER_HOPEWELL", "label": "Intersection", "name": "Foxhunter Hopewell", "bc": 0.0211, "pr": 0.0179, "ev": 0.0003, "lat": 0, "lng": 0}, {"id": "INT_KELLER_SNIDER", "label": "Intersection", "name": "Keller Snider", "bc": 0.0422, "pr": 0.0262, "ev": 0.0001, "lat": 0, "lng": 0}, {"id": "NBH_HARPERS_STATION", "label": "Neighborhood", "name": "Harpers Station", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_MONTGOMERY_VILLAGE_CENTER", "label": "Neighborhood", "name": "Montgomery Village Center", "bc": 0, "pr": 0.0097, "ev": 0.0002, "lat": 0, "lng": 0}, {"id": "NBH_PLAINFIELD_ESTATES", "label": "Neighborhood", "name": "Plainfield Estates", "bc": 0, "pr": 0.0097, "ev": 0.0026, "lat": 0, "lng": 0}, {"id": "NBH_LEGACY_CT_AREA", "label": "Neighborhood", "name": "Legacy Ct Area", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_PFEIFFER_ROAD_ESTATES", "label": "Neighborhood", "name": "Pfeiffer Road Estates", "bc": 0, "pr": 0.0097, "ev": 0.0182, "lat": 0, "lng": 0}, {"id": "INT_MIAMI_RD_KENWOOD", "label": "Intersection", "name": "Miami Rd Kenwood", "bc": 0.0241, "pr": 0.0262, "ev": 0.4326, "lat": 0, "lng": 0}, {"id": "NBH_SYMMES_TOWNSHIP_SE", "label": "Neighborhood", "name": "Symmes Township Se", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_SYCAMORE_TOWNSHIP_S", "label": "Neighborhood", "name": "Sycamore Township S", "bc": 0, "pr": 0.0097, "ev": 0.0964, "lat": 0, "lng": 0}, {"id": "NBH_HOPEWELL_HILLS", "label": "Neighborhood", "name": "Hopewell Hills", "bc": 0, "pr": 0.0097, "ev": 0.0002, "lat": 0, "lng": 0}, {"id": "INT_MONTGOMERY_FIELDS_ERTEL", "label": "Intersection", "name": "Montgomery Fields Ertel", "bc": 0.0, "pr": 0.0305, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "BRG_COOPER_I71", "label": "Bridge", "name": "Cooper I71", "bc": 0.6145, "pr": 0.491, "ev": 0.307, "lat": 0, "lng": 0}, {"id": "NBH_CITY_OF_MONTGOMERY", "label": "Neighborhood", "name": "City Of Montgomery", "bc": 0, "pr": 0.0097, "ev": 0.0004, "lat": 0, "lng": 0}, {"id": "INT_CARVER_KENWOOD", "label": "Intersection", "name": "Carver Kenwood", "bc": 0.012, "pr": 0.0179, "ev": 0.4144, "lat": 0, "lng": 0}, {"id": "NBH_MIAMI_HEIGHTS", "label": "Neighborhood", "name": "Miami Heights", "bc": 0, "pr": 0.0097, "ev": 0.0439, "lat": 0, "lng": 0}, {"id": "NBH_MCKINNEY_FARMS", "label": "Neighborhood", "name": "Mckinney Farms", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "BRG_REED_HARTMAN_I71", "label": "Bridge", "name": "Reed Hartman I71", "bc": 0.3283, "pr": 0.2201, "ev": 0.0265, "lat": 0, "lng": 0}, {"id": "NBH_SYCAMORE_PLACE", "label": "Neighborhood", "name": "Sycamore Place", "bc": 0, "pr": 0.0097, "ev": 0.0025, "lat": 0, "lng": 0}, {"id": "NBH_DEERFIELD_TOWNSHIP", "label": "Neighborhood", "name": "Deerfield Township", "bc": 0, "pr": 0.0097, "ev": 0.0002, "lat": 0, "lng": 0}, {"id": "INT_GM_READING", "label": "Intersection", "name": "Gm Reading", "bc": 0.0723, "pr": 0.0344, "ev": 0.0035, "lat": 0, "lng": 0}, {"id": "INT_LIBERTY_HILL_HOPEWELL", "label": "Intersection", "name": "Liberty Hill Hopewell", "bc": 0.0211, "pr": 0.0179, "ev": 0.0003, "lat": 0, "lng": 0}, {"id": "NBH_ZIG_ZAG_ROAD_CORRIDOR", "label": "Neighborhood", "name": "Zig Zag Road Corridor", "bc": 0, "pr": 0.0097, "ev": 0.0203, "lat": 0, "lng": 0}, {"id": "NBH_SHARONVILLE_BORDER", "label": "Neighborhood", "name": "Sharonville Border", "bc": 0, "pr": 0.0097, "ev": 0.0015, "lat": 0, "lng": 0}, {"id": "NBH_SCHOOL_ROAD_ESTATES", "label": "Neighborhood", "name": "School Road Estates", "bc": 0, "pr": 0.0097, "ev": 0.0439, "lat": 0, "lng": 0}, {"id": "NBH_SYCAMORE_TOWNSHIP_COUNTY_AREA", "label": "Neighborhood", "name": "Sycamore Township County Area", "bc": 0, "pr": 0.0097, "ev": 0.0439, "lat": 0, "lng": 0}, {"id": "NBH_ASHLEY_AVE_AREA", "label": "Neighborhood", "name": "Ashley Ave Area", "bc": 0, "pr": 0.0097, "ev": 0.042, "lat": 0, "lng": 0}, {"id": "BRG_HUNT_CULVERT", "label": "Bridge", "name": "Hunt Culvert", "bc": 0.0301, "pr": 0.0262, "ev": 0.0459, "lat": 0, "lng": 0}, {"id": "INT_HUNT_KENWOOD", "label": "Intersection", "name": "Hunt Kenwood", "bc": 0.0361, "pr": 0.0319, "ev": 0.4159, "lat": 0, "lng": 0}, {"id": "NBH_MONTGOMERY_NW", "label": "Neighborhood", "name": "Montgomery Nw", "bc": 0, "pr": 0.0097, "ev": 0.0022, "lat": 0, "lng": 0}, {"id": "INT_CARRINGTON_UNION_CEM", "label": "Intersection", "name": "Carrington Union Cem", "bc": 0.0301, "pr": 0.0179, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "INT_HUNTERS_CREEK_COOPER", "label": "Intersection", "name": "Hunters Creek Cooper", "bc": 0.0181, "pr": 0.0262, "ev": 0.0037, "lat": 0, "lng": 0}, {"id": "NBH_SWING_ROAD_AREA", "label": "Neighborhood", "name": "Swing Road Area", "bc": 0, "pr": 0.0097, "ev": 0.044, "lat": 0, "lng": 0}, {"id": "NBH_GRANDSTONE_LN_AREA", "label": "Neighborhood", "name": "Grandstone Ln Area", "bc": 0, "pr": 0.0097, "ev": 0.0002, "lat": 0, "lng": 0}, {"id": "INT_MONTGOMERY_ORCHARD_CLUB", "label": "Intersection", "name": "Montgomery Orchard Club", "bc": 0.0121, "pr": 0.0207, "ev": 0.0007, "lat": 0, "lng": 0}, {"id": "INT_GM_SHARON", "label": "Intersection", "name": "Gm Sharon", "bc": 0.0482, "pr": 0.0303, "ev": 0.0049, "lat": 0, "lng": 0}, {"id": "INT_SHARONDALE_KENWOOD", "label": "Intersection", "name": "Sharondale Kenwood", "bc": 0.0181, "pr": 0.022, "ev": 0.4524, "lat": 0, "lng": 0}, {"id": "NBH_DELRAY_ESTATES", "label": "Neighborhood", "name": "Delray Estates", "bc": 0, "pr": 0.0097, "ev": 0.0025, "lat": 0, "lng": 0}, {"id": "NBH_HARPERS_POINT", "label": "Neighborhood", "name": "Harpers Point", "bc": 0, "pr": 0.0097, "ev": 0.0015, "lat": 0, "lng": 0}, {"id": "INT_ZIG_ZAG_STEEPLECHASE", "label": "Intersection", "name": "Zig Zag Steeplechase", "bc": 0.0361, "pr": 0.0262, "ev": 0.0221, "lat": 0, "lng": 0}, {"id": "INT_COOPER_MONTGOMERY", "label": "Intersection", "name": "Cooper Montgomery", "bc": 0.759, "pr": 0.4082, "ev": 0.1387, "lat": 0, "lng": 0}, {"id": "INT_SWING_KENWOOD", "label": "Intersection", "name": "Swing Kenwood", "bc": 0.0241, "pr": 0.022, "ev": 0.4338, "lat": 0, "lng": 0}, {"id": "NBH_GLENBROOK_AREA", "label": "Neighborhood", "name": "Glenbrook Area", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_CARPENTERS_RUN", "label": "Neighborhood", "name": "Carpenters Run", "bc": 0, "pr": 0.0097, "ev": 0.0015, "lat": 0, "lng": 0}, {"id": "NBH_SUMMIT_PARK", "label": "Neighborhood", "name": "Summit Park", "bc": 0, "pr": 0.0097, "ev": 0.0025, "lat": 0, "lng": 0}, {"id": "INT_BRATTLE_GRANDSTONE", "label": "Intersection", "name": "Brattle Grandstone", "bc": 0.0181, "pr": 0.0179, "ev": 0.0002, "lat": 0, "lng": 0}, {"id": "INT_SOLZMAN_KENWOOD", "label": "Intersection", "name": "Solzman Kenwood", "bc": 0.0145, "pr": 0.0207, "ev": 0.4543, "lat": 0, "lng": 0}, {"id": "INT_GROOMS_GLENDALE_MILFORD", "label": "Intersection", "name": "Grooms Glendale Milford", "bc": 0.0723, "pr": 0.0344, "ev": 0.0035, "lat": 0, "lng": 0}, {"id": "INT_MCKINNEY_ENYART", "label": "Intersection", "name": "Mckinney Enyart", "bc": 0.0392, "pr": 0.022, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_BLUE_ASH_SW", "label": "Neighborhood", "name": "Blue Ash Sw", "bc": 0, "pr": 0.0097, "ev": 0.0011, "lat": 0, "lng": 0}, {"id": "INT_WELLER_KEMPER", "label": "Intersection", "name": "Weller Kemper", "bc": 0.0361, "pr": 0.0262, "ev": 0.0003, "lat": 0, "lng": 0}, {"id": "NBH_CARRINGTON_AREA", "label": "Neighborhood", "name": "Carrington Area", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_BLUE_ASH_NORTH", "label": "Neighborhood", "name": "Blue Ash North", "bc": 0, "pr": 0.0097, "ev": 0.0015, "lat": 0, "lng": 0}, {"id": "NBH_WELLER_ROAD_ESTATES", "label": "Neighborhood", "name": "Weller Road Estates", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_MONTGOMERY_EAST", "label": "Neighborhood", "name": "Montgomery East", "bc": 0, "pr": 0.0097, "ev": 0.0002, "lat": 0, "lng": 0}, {"id": "NBH_SEVEN_GABLES_PARK_AREA", "label": "Neighborhood", "name": "Seven Gables Park Area", "bc": 0, "pr": 0.0097, "ev": 0.0002, "lat": 0, "lng": 0}, {"id": "NBH_IVYGATE_LN_AREA", "label": "Neighborhood", "name": "Ivygate Ln Area", "bc": 0, "pr": 0.0097, "ev": 0.0002, "lat": 0, "lng": 0}, {"id": "INT_MONTGOMERY_SEVEN_GABLES", "label": "Intersection", "name": "Montgomery Seven Gables", "bc": 0.0301, "pr": 0.0262, "ev": 0.0005, "lat": 0, "lng": 0}, {"id": "INT_MAIN_ST_MONTGOMERY", "label": "Intersection", "name": "Main St Montgomery", "bc": 0.0301, "pr": 0.0262, "ev": 0.0005, "lat": 0, "lng": 0}, {"id": "NBH_KENWOOD_SOUTH", "label": "Neighborhood", "name": "Kenwood South", "bc": 0, "pr": 0.0097, "ev": 0.0439, "lat": 0, "lng": 0}, {"id": "INT_HAGEWA_PLAINFIELD", "label": "Intersection", "name": "Hagewa Plainfield", "bc": 0.0181, "pr": 0.0262, "ev": 0.0028, "lat": 0, "lng": 0}, {"id": "NBH_SYMMES_TOWNSHIP_SOUTH", "label": "Neighborhood", "name": "Symmes Township South", "bc": 0, "pr": 0.0097, "ev": 0.0002, "lat": 0, "lng": 0}, {"id": "NBH_HOPEWELL_MEADOWS_PARK", "label": "Neighborhood", "name": "Hopewell Meadows Park", "bc": 0, "pr": 0.0097, "ev": 0.0003, "lat": 0, "lng": 0}, {"id": "INT_CONKLIN_KENWOOD", "label": "Intersection", "name": "Conklin Kenwood", "bc": 0.012, "pr": 0.0179, "ev": 0.4144, "lat": 0, "lng": 0}, {"id": "NBH_MONTGOMERY_RD_CORRIDOR", "label": "Neighborhood", "name": "Montgomery Rd Corridor", "bc": 0, "pr": 0.0097, "ev": 0.0002, "lat": 0, "lng": 0}, {"id": "INT_WINDZAG_ZIGZAG", "label": "Intersection", "name": "Windzag Zigzag", "bc": 0.0361, "pr": 0.0262, "ev": 0.0221, "lat": 0, "lng": 0}, {"id": "INT_ALDINE_KENWOOD", "label": "Intersection", "name": "Aldine Kenwood", "bc": 0.0241, "pr": 0.0262, "ev": 0.4326, "lat": 0, "lng": 0}, {"id": "INT_COOPER_ZIGZAG", "label": "Intersection", "name": "Cooper Zigzag", "bc": 0.0362, "pr": 0.0492, "ev": 0.0037, "lat": 0, "lng": 0}, {"id": "NBH_SYCAMORE_TOWNSHIP_CENTRAL", "label": "Neighborhood", "name": "Sycamore Township Central", "bc": 0, "pr": 0.0097, "ev": 0.0439, "lat": 0, "lng": 0}, {"id": "INT_UNION_CEMETERY_FIELDS_ERTEL", "label": "Intersection", "name": "Union Cemetery Fields Ertel", "bc": 0.1084, "pr": 0.0373, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_HARPERS_POINT_EAST", "label": "Neighborhood", "name": "Harpers Poeast", "bc": 0, "pr": 0.0097, "ev": 0.0003, "lat": 0, "lng": 0}, {"id": "NBH_GOVERNORS_HILL", "label": "Neighborhood", "name": "Governors Hill", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "INT_MONTGOMERY_INDIANWOODS", "label": "Intersection", "name": "Montgomery Indianwoods", "bc": 0.0301, "pr": 0.0262, "ev": 0.0005, "lat": 0, "lng": 0}, {"id": "NBH_KENWOOD_CORRIDOR", "label": "Neighborhood", "name": "Kenwood Corridor", "bc": 0, "pr": 0.0097, "ev": 0.3977, "lat": 0, "lng": 0}, {"id": "NBH_HUNT_ROAD_ESTATES", "label": "Neighborhood", "name": "Hunt Road Estates", "bc": 0, "pr": 0.0097, "ev": 0.0182, "lat": 0, "lng": 0}, {"id": "NBH_REED_HARTMAN_CORRIDOR", "label": "Neighborhood", "name": "Reed Hartman Corridor", "bc": 0, "pr": 0.0097, "ev": 0.0034, "lat": 0, "lng": 0}, {"id": "INT_COOPER_HOPEWELL", "label": "Intersection", "name": "Cooper Hopewell", "bc": 0.0301, "pr": 0.0262, "ev": 0.0005, "lat": 0, "lng": 0}, {"id": "NBH_CORNELL_ESTATES", "label": "Neighborhood", "name": "Cornell Estates", "bc": 0, "pr": 0.0097, "ev": 0.0001, "lat": 0, "lng": 0}, {"id": "BRG_GM_MUDDY_CREEK", "label": "Bridge", "name": "Gm Muddy Creek", "bc": 0.2801, "pr": 0.1303, "ev": 0.0035, "lat": 0, "lng": 0}, {"id": "NBH_HUNTERS_CREEK", "label": "Neighborhood", "name": "Hunters Creek", "bc": 0, "pr": 0.0097, "ev": 0.0015, "lat": 0, "lng": 0}, {"id": "NBH_CONKLIN_RD_AREA", "label": "Neighborhood", "name": "Conklin Rd Area", "bc": 0, "pr": 0.0097, "ev": 0.042, "lat": 0, "lng": 0}, {"id": "INT_MONTGOMERY_ENYART", "label": "Intersection", "name": "Montgomery Enyart", "bc": 0.1536, "pr": 0.049, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "INT_PLAINFIELD_COOPER", "label": "Intersection", "name": "Plainfield Cooper", "bc": 0.0301, "pr": 0.0484, "ev": 0.0153, "lat": 0, "lng": 0}, {"id": "INT_SYCAMORE_RD_KENWOOD", "label": "Intersection", "name": "Sycamore Rd Kenwood", "bc": 0.0241, "pr": 0.0262, "ev": 0.4326, "lat": 0, "lng": 0}, {"id": "NBH_BLUE_ASH_ROAD_CORRIDOR", "label": "Neighborhood", "name": "Blue Ash Road Corridor", "bc": 0, "pr": 0.0097, "ev": 0.0459, "lat": 0, "lng": 0}, {"id": "INT_EUCLID_KENWOOD", "label": "Intersection", "name": "Euclid Kenwood", "bc": 0.0181, "pr": 0.022, "ev": 0.4524, "lat": 0, "lng": 0}, {"id": "NBH_SYCAMORE_TOWNSHIP_W", "label": "Neighborhood", "name": "Sycamore Township W", "bc": 0, "pr": 0.0097, "ev": 0.0918, "lat": 0, "lng": 0}, {"id": "NBH_COOPER_COMMONS", "label": "Neighborhood", "name": "Cooper Commons", "bc": 0, "pr": 0.0097, "ev": 0.0034, "lat": 0, "lng": 0}, {"id": "NBH_HOSBROOK_FARMS", "label": "Neighborhood", "name": "Hosbrook Farms", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_SYMMES_TOWNSHIP_CENTRAL", "label": "Neighborhood", "name": "Symmes Township Central", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_PINEWOOD_AREA", "label": "Neighborhood", "name": "Pinewood Area", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_SYMMES_ELEMENTARY_AREA", "label": "Neighborhood", "name": "Symmes Elementary Area", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_SYCAMORE_WEST", "label": "Neighborhood", "name": "Sycamore West", "bc": 0, "pr": 0.0097, "ev": 0.0015, "lat": 0, "lng": 0}, {"id": "INT_GRANDSTONE_MONTGOMERY", "label": "Intersection", "name": "Grandstone Montgomery", "bc": 0.0452, "pr": 0.0332, "ev": 0.0005, "lat": 0, "lng": 0}, {"id": "INT_GREGORY_MASON", "label": "Intersection", "name": "Gregory Mason", "bc": 0.0301, "pr": 0.0179, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_SYCAMORE_TOWNSHIP_W_BOUNDARY", "label": "Neighborhood", "name": "Sycamore Township W Boundary", "bc": 0, "pr": 0.0097, "ev": 0.0013, "lat": 0, "lng": 0}, {"id": "INT_FIELDS_ERTEL_MASON_MONTGOMERY", "label": "Intersection", "name": "Fields Ertel Mason Montgomery", "bc": 0.1898, "pr": 0.0659, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_READING_CSD_BORDER", "label": "Neighborhood", "name": "Reading Csd Border", "bc": 0, "pr": 0.0097, "ev": 0.0013, "lat": 0, "lng": 0}, {"id": "NBH_BRATTLE_LN_AREA", "label": "Neighborhood", "name": "Brattle Ln Area", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_SYCAMORE_ROAD_ESTATES", "label": "Neighborhood", "name": "Sycamore Road Estates", "bc": 0, "pr": 0.0097, "ev": 0.0439, "lat": 0, "lng": 0}, {"id": "INT_KENWOOD_E_GALBRAITH", "label": "Intersection", "name": "Kenwood E Galbraith", "bc": 0.0458, "pr": 0.0399, "ev": 0.496, "lat": 0, "lng": 0}, {"id": "INT_CREEK_GLENDALE_MILFORD", "label": "Intersection", "name": "Creek Glendale Milford", "bc": 0.0241, "pr": 0.0179, "ev": 0.0032, "lat": 0, "lng": 0}, {"id": "NBH_FOXHUNTER_LN_AREA", "label": "Neighborhood", "name": "Foxhunter Ln Area", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_BRAMBLEWOOD_CR_AREA", "label": "Neighborhood", "name": "Bramblewood Cr Area", "bc": 0, "pr": 0.0097, "ev": 0.042, "lat": 0, "lng": 0}, {"id": "NBH_SWAIM_PARK_AREA", "label": "Neighborhood", "name": "Swaim Park Area", "bc": 0, "pr": 0.0097, "ev": 0.0203, "lat": 0, "lng": 0}, {"id": "NBH_CONREY_ROAD_AREA", "label": "Neighborhood", "name": "Conrey Road Area", "bc": 0, "pr": 0.0097, "ev": 0.0002, "lat": 0, "lng": 0}, {"id": "INT_LEGACY_SNIDER", "label": "Intersection", "name": "Legacy Snider", "bc": 0.0211, "pr": 0.0179, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_FIELDS_ERTEL_CORRIDOR", "label": "Neighborhood", "name": "Fields Ertel Corridor", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_SYMMES_TOWNSHIP_N", "label": "Neighborhood", "name": "Symmes Township N", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "INT_HARBORTOWN_MASON", "label": "Intersection", "name": "Harbortown Mason", "bc": 0.0301, "pr": 0.0179, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_KUGLER_MILL_ESTATES", "label": "Neighborhood", "name": "Kugler Mill Estates", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_SPIRAL_AREA", "label": "Neighborhood", "name": "Spiral Area", "bc": 0, "pr": 0.0097, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_WINDZAG_LANE_AREA", "label": "Neighborhood", "name": "Windzag Lane Area", "bc": 0, "pr": 0.0097, "ev": 0.0022, "lat": 0, "lng": 0}, {"id": "NBH_SYCAMORE_TOWNSHIP_N", "label": "Neighborhood", "name": "Sycamore Township N", "bc": 0, "pr": 0.0097, "ev": 0.0471, "lat": 0, "lng": 0}, {"id": "NBH_MONROE_AVE_AREA", "label": "Neighborhood", "name": "Monroe Ave Area", "bc": 0, "pr": 0.0097, "ev": 0.042, "lat": 0, "lng": 0}, {"id": "INT_HOSBROOK_FIELDS_ERTEL", "label": "Intersection", "name": "Hosbrook Fields Ertel", "bc": 0.0542, "pr": 0.0262, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "INT_FIELDS_ERTEL_SNIDER", "label": "Intersection", "name": "Fields Ertel Snider", "bc": 0.6326, "pr": 0.1924, "ev": 0.0, "lat": 0, "lng": 0}, {"id": "NBH_LOVELAND_MADEIRA_CORRIDOR", "label": "Neighborhood", "name": "Loveland Madeira Corridor", "bc": 0, "pr": 0.0097, "ev": 0.0003, "lat": 0, "lng": 0}];
+const VIZ_EDGES = [{"src": "NBH_SYCAMORE_PLACE", "dst": "SJH"}, {"src": "NBH_DELRAY_ESTATES", "dst": "SJH"}, {"src": "NBH_REED_HARTMAN_CORRIDOR", "dst": "BRG_COOPER_I71"}, {"src": "NBH_BLUE_ASH_BUSINESS_DISTRICT", "dst": "BRG_COOPER_I71"}, {"src": "NBH_COOPER_COMMONS", "dst": "BRG_COOPER_I71"}, {"src": "BRG_COOPER_I71", "dst": "INT_COOPER_DELRAY"}, {"src": "INT_COOPER_DELRAY", "dst": "SJH"}, {"src": "NBH_CITY_OF_MONTGOMERY", "dst": "BRG_MONTGOMERY_CREEK"}, {"src": "NBH_ORCHARD_CLUB", "dst": "BRG_MONTGOMERY_CREEK"}, {"src": "NBH_BETHESDA_NORTH_AREA", "dst": "BRG_MONTGOMERY_CREEK"}, {"src": "BRG_MONTGOMERY_CREEK", "dst": "INT_COOPER_MONTGOMERY"}, {"src": "INT_COOPER_MONTGOMERY", "dst": "BRG_COOPER_I71"}, {"src": "NBH_VILLAGE_GREEN", "dst": "INT_COOPER_VILLAGE_GREEN"}, {"src": "NBH_TREEBROOK", "dst": "INT_COOPER_VILLAGE_GREEN"}, {"src": "INT_COOPER_VILLAGE_GREEN", "dst": "BRG_COOPER_I71"}, {"src": "NBH_HOPEWELL_HILLS", "dst": "INT_COOPER_HOPEWELL"}, {"src": "NBH_BLUE_ASH_WEST", "dst": "INT_COOPER_HOPEWELL"}, {"src": "INT_COOPER_HOPEWELL", "dst": "BRG_MONTGOMERY_CREEK"}, {"src": "NBH_HUNTERS_CREEK", "dst": "INT_HUNTERS_CREEK_COOPER"}, {"src": "NBH_SYCAMORE_WEST", "dst": "INT_HUNTERS_CREEK_COOPER"}, {"src": "INT_HUNTERS_CREEK_COOPER", "dst": "BRG_COOPER_I71"}, {"src": "NBH_CARPENTERS_RUN", "dst": "INT_CARPENTERS_COOPER"}, {"src": "NBH_BLUE_ASH_NORTH", "dst": "INT_CARPENTERS_COOPER"}, {"src": "INT_CARPENTERS_COOPER", "dst": "BRG_COOPER_I71"}, {"src": "NBH_DEERFIELD_TOWNSHIP", "dst": "INT_MONTGOMERY_DEERFIELD"}, {"src": "NBH_MONTGOMERY_FARMS", "dst": "INT_MONTGOMERY_DEERFIELD"}, {"src": "INT_MONTGOMERY_DEERFIELD", "dst": "BRG_MONTGOMERY_CREEK"}, {"src": "NBH_SYMMES_TOWNSHIP_SOUTH", "dst": "INT_KEMPER_MONTGOMERY"}, {"src": "NBH_KEMPER_MEADOWS", "dst": "INT_KEMPER_MONTGOMERY"}, {"src": "INT_KEMPER_MONTGOMERY", "dst": "BRG_MONTGOMERY_CREEK"}, {"src": "NBH_HISTORIC_MONTGOMERY", "dst": "INT_MAIN_ST_MONTGOMERY"}, {"src": "NBH_MONTGOMERY_VILLAGE_CENTER", "dst": "INT_MAIN_ST_MONTGOMERY"}, {"src": "INT_MAIN_ST_MONTGOMERY", "dst": "BRG_MONTGOMERY_CREEK"}, {"src": "NBH_SEVEN_GABLES_PARK_AREA", "dst": "INT_MONTGOMERY_SEVEN_GABLES"}, {"src": "NBH_SYMMES_TOWNSHIP_NW", "dst": "INT_MONTGOMERY_SEVEN_GABLES"}, {"src": "INT_MONTGOMERY_SEVEN_GABLES", "dst": "BRG_MONTGOMERY_CREEK"}, {"src": "NBH_INDIANWOODS", "dst": "INT_MONTGOMERY_INDIANWOODS"}, {"src": "NBH_MONTGOMERY_EAST", "dst": "INT_MONTGOMERY_INDIANWOODS"}, {"src": "INT_MONTGOMERY_INDIANWOODS", "dst": "BRG_MONTGOMERY_CREEK"}, {"src": "NBH_SYMMES_STATION_AREA", "dst": "INT_LOVELAND_MADEIRA_HOPEWELL"}, {"src": "NBH_HOPEWELL_MEADOWS", "dst": "INT_LOVELAND_MADEIRA_HOPEWELL"}, {"src": "INT_LOVELAND_MADEIRA_HOPEWELL", "dst": "BRG_MONTGOMERY_CREEK"}, {"src": "NBH_LOVELAND_MADEIRA_CORRIDOR", "dst": "INT_LOVELAND_MADEIRA_HOPEWELL"}, {"src": "NBH_HARPERS_POINT_EAST", "dst": "INT_LOVELAND_MADEIRA_HOPEWELL"}, {"src": "NBH_HOPEWELL_MEADOWS_PARK", "dst": "INT_LOVELAND_MADEIRA_HOPEWELL"}, {"src": "NBH_CHCA_CAMPUS_AREA", "dst": "INT_SNIDER_KEMPER"}, {"src": "NBH_SYMMES_TOWNSHIP_NE", "dst": "INT_SNIDER_KEMPER"}, {"src": "INT_SNIDER_KEMPER", "dst": "INT_KEMPER_MONTGOMERY"}, {"src": "NBH_GOVERNORS_PLAZA", "dst": "BRG_FIELDS_ERTEL_CREEK"}, {"src": "NBH_HARPERS_STATION", "dst": "BRG_FIELDS_ERTEL_CREEK"}, {"src": "NBH_FIELDS_ERTEL_CORRIDOR", "dst": "BRG_FIELDS_ERTEL_CREEK"}, {"src": "BRG_FIELDS_ERTEL_CREEK", "dst": "INT_FIELDS_ERTEL_SNIDER"}, {"src": "INT_FIELDS_ERTEL_SNIDER", "dst": "INT_SNIDER_KEMPER"}, {"src": "NBH_MASON_MONTGOMERY_CORRIDOR", "dst": "BRG_MASON_MONTGOMERY_I275"}, {"src": "NBH_SYMMES_TOWNSHIP_N", "dst": "BRG_MASON_MONTGOMERY_I275"}, {"src": "NBH_GLENBROOK_AREA", "dst": "BRG_MASON_MONTGOMERY_I275"}, {"src": "BRG_MASON_MONTGOMERY_I275", "dst": "INT_FIELDS_ERTEL_MASON_MONTGOMERY"}, {"src": "INT_FIELDS_ERTEL_MASON_MONTGOMERY", "dst": "BRG_FIELDS_ERTEL_CREEK"}, {"src": "NBH_UNION_CEMETERY_AREA", "dst": "INT_UNION_CEMETERY_FIELDS_ERTEL"}, {"src": "NBH_SYMMES_TOWNSHIP_CENTRAL", "dst": "INT_UNION_CEMETERY_FIELDS_ERTEL"}, {"src": "INT_UNION_CEMETERY_FIELDS_ERTEL", "dst": "BRG_FIELDS_ERTEL_CREEK"}, {"src": "NBH_GOVERNORS_HILL", "dst": "INT_GOVERNORS_HILL_FIELDS_ERTEL"}, {"src": "NBH_GOVERNORS_PLAZA_II", "dst": "INT_GOVERNORS_HILL_FIELDS_ERTEL"}, {"src": "INT_GOVERNORS_HILL_FIELDS_ERTEL", "dst": "BRG_FIELDS_ERTEL_CREEK"}, {"src": "NBH_HOSBROOK_FARMS", "dst": "INT_HOSBROOK_FIELDS_ERTEL"}, {"src": "NBH_SYMMES_TOWNSHIP_SE", "dst": "INT_HOSBROOK_FIELDS_ERTEL"}, {"src": "INT_HOSBROOK_FIELDS_ERTEL", "dst": "BRG_FIELDS_ERTEL_CREEK"}, {"src": "NBH_KELLER_FARMS", "dst": "INT_KELLER_SNIDER"}, {"src": "NBH_SYMMES_TOWNSHIP_S", "dst": "INT_KELLER_SNIDER"}, {"src": "INT_KELLER_SNIDER", "dst": "INT_SNIDER_KEMPER"}, {"src": "NBH_SYMMES_ELEMENTARY_AREA", "dst": "INT_MONTGOMERY_ENYART"}, {"src": "NBH_SYMMES_TOWNSHIP_N", "dst": "INT_MONTGOMERY_ENYART"}, {"src": "NBH_PINEWOOD_AREA", "dst": "INT_MONTGOMERY_ENYART"}, {"src": "INT_MONTGOMERY_ENYART", "dst": "INT_MONTGOMERY_FIELDS_ERTEL"}, {"src": "INT_MONTGOMERY_FIELDS_ERTEL", "dst": "BRG_FIELDS_ERTEL_CREEK"}, {"src": "NBH_MCKINNEY_FARMS", "dst": "INT_MCKINNEY_ENYART"}, {"src": "NBH_SYMMES_TOWNSHIP_CENTRAL", "dst": "INT_MCKINNEY_ENYART"}, {"src": "INT_MCKINNEY_ENYART", "dst": "INT_MONTGOMERY_ENYART"}, {"src": "INT_MONTGOMERY_ENYART", "dst": "BRG_FIELDS_ERTEL_CREEK"}, {"src": "NBH_WELLER_ROAD_ESTATES", "dst": "INT_WELLER_KEMPER"}, {"src": "NBH_SYMMES_TOWNSHIP_W", "dst": "INT_WELLER_KEMPER"}, {"src": "INT_WELLER_KEMPER", "dst": "INT_KEMPER_MONTGOMERY"}, {"src": "NBH_DOWNTOWN_BLUE_ASH", "dst": "BRG_KENWOOD_CREEK"}, {"src": "NBH_BLUE_ASH_CORPORATE_PARK", "dst": "BRG_KENWOOD_CREEK"}, {"src": "NBH_KENWOOD_CORRIDOR", "dst": "BRG_KENWOOD_CREEK"}, {"src": "BRG_KENWOOD_CREEK", "dst": "INT_KENWOOD_COOPER"}, {"src": "INT_KENWOOD_COOPER", "dst": "INT_COOPER_DELRAY"}, {"src": "NBH_PLAINFIELD_ESTATES", "dst": "INT_PLAINFIELD_COOPER"}, {"src": "NBH_BLUE_ASH_SOUTH", "dst": "INT_PLAINFIELD_COOPER"}, {"src": "INT_PLAINFIELD_COOPER", "dst": "INT_COOPER_DELRAY"}, {"src": "NBH_SUMMIT_PARK", "dst": "INT_SUMMIT_PARK_COOPER"}, {"src": "NBH_BLUE_ASH_SUMMIT", "dst": "INT_SUMMIT_PARK_COOPER"}, {"src": "INT_SUMMIT_PARK_COOPER", "dst": "INT_COOPER_DELRAY"}, {"src": "NBH_MAPLE_DALE_ELEMENTARY_AREA", "dst": "INT_HAGEWA_PLAINFIELD"}, {"src": "NBH_BLUE_ASH_SW", "dst": "INT_HAGEWA_PLAINFIELD"}, {"src": "INT_HAGEWA_PLAINFIELD", "dst": "INT_PLAINFIELD_COOPER"}, {"src": "NBH_HUNT_ROAD_ESTATES", "dst": "BRG_HUNT_CULVERT"}, {"src": "NBH_BLUE_ASH_SR_126_CORRIDOR", "dst": "BRG_HUNT_CULVERT"}, {"src": "BRG_HUNT_CULVERT", "dst": "INT_HUNT_KENWOOD"}, {"src": "INT_HUNT_KENWOOD", "dst": "BRG_KENWOOD_CREEK"}, {"src": "NBH_I_71_EXIT_15_CORRIDOR", "dst": "BRG_PFEIFFER_CREEK"}, {"src": "NBH_PFEIFFER_ROAD_ESTATES", "dst": "BRG_PFEIFFER_CREEK"}, {"src": "BRG_PFEIFFER_CREEK", "dst": "INT_PFEIFFER_KENWOOD"}, {"src": "INT_PFEIFFER_KENWOOD", "dst": "BRG_KENWOOD_CREEK"}, {"src": "NBH_EASTERN_HILLS_GOLF_CLUB_AREA", "dst": "INT_ALDINE_KENWOOD"}, {"src": "NBH_KENWOOD_SOUTH", "dst": "INT_ALDINE_KENWOOD"}, {"src": "INT_ALDINE_KENWOOD", "dst": "BRG_KENWOOD_CREEK"}, {"src": "NBH_SYCAMORE_TOWNSHIP_SW", "dst": "INT_KENWOOD_BLUE_ASH_RD"}, {"src": "NBH_BLUE_ASH_ROAD_CORRIDOR", "dst": "INT_KENWOOD_BLUE_ASH_RD"}, {"src": "INT_KENWOOD_BLUE_ASH_RD", "dst": "BRG_KENWOOD_CREEK"}, {"src": "NBH_EUCLID_ESTATES", "dst": "INT_EUCLID_KENWOOD"}, {"src": "NBH_SYCAMORE_TOWNSHIP_SW", "dst": "INT_EUCLID_KENWOOD"}, {"src": "INT_EUCLID_KENWOOD", "dst": "BRG_KENWOOD_CREEK"}, {"src": "NBH_SYCAMORE_TOWNSHIP_S", "dst": "INT_KENWOOD_E_GALBRAITH"}, {"src": "NBH_BLUE_ASH_SOUTH_BOUNDARY", "dst": "INT_KENWOOD_E_GALBRAITH"}, {"src": "INT_KENWOOD_E_GALBRAITH", "dst": "BRG_KENWOOD_CREEK"}, {"src": "NBH_GALBRAITH_CORRIDOR", "dst": "INT_KENWOOD_E_GALBRAITH"}, {"src": "NBH_I_71_CORRIDOR", "dst": "INT_KENWOOD_E_GALBRAITH"}, {"src": "NBH_KEN_ARBRE_ESTATES", "dst": "INT_KEN_ARBRE_KENWOOD"}, {"src": "NBH_SYCAMORE_TOWNSHIP_W", "dst": "INT_KEN_ARBRE_KENWOOD"}, {"src": "INT_KEN_ARBRE_KENWOOD", "dst": "BRG_KENWOOD_CREEK"}, {"src": "NBH_MIAMI_HEIGHTS", "dst": "INT_MIAMI_RD_KENWOOD"}, {"src": "NBH_SYCAMORE_TOWNSHIP_NW", "dst": "INT_MIAMI_RD_KENWOOD"}, {"src": "INT_MIAMI_RD_KENWOOD", "dst": "BRG_KENWOOD_CREEK"}, {"src": "NBH_SYCAMORE_TOWNSHIP_COUNTY_AREA", "dst": "INT_SCHOOL_RD_KENWOOD"}, {"src": "NBH_SCHOOL_ROAD_ESTATES", "dst": "INT_SCHOOL_RD_KENWOOD"}, {"src": "INT_SCHOOL_RD_KENWOOD", "dst": "BRG_KENWOOD_CREEK"}, {"src": "NBH_SHARONDALE", "dst": "INT_SHARONDALE_KENWOOD"}, {"src": "NBH_SYCAMORE_TOWNSHIP_W", "dst": "INT_SHARONDALE_KENWOOD"}, {"src": "INT_SHARONDALE_KENWOOD", "dst": "BRG_KENWOOD_CREEK"}, {"src": "NBH_SOLZMAN_ESTATES", "dst": "INT_SOLZMAN_KENWOOD"}, {"src": "NBH_SYCAMORE_TOWNSHIP_S", "dst": "INT_SOLZMAN_KENWOOD"}, {"src": "INT_SOLZMAN_KENWOOD", "dst": "BRG_KENWOOD_CREEK"}, {"src": "NBH_SYCAMORE_TOWNSHIP_N", "dst": "INT_SWING_KENWOOD"}, {"src": "NBH_SWING_ROAD_AREA", "dst": "INT_SWING_KENWOOD"}, {"src": "INT_SWING_KENWOOD", "dst": "BRG_KENWOOD_CREEK"}, {"src": "NBH_SYCAMORE_ROAD_ESTATES", "dst": "INT_SYCAMORE_RD_KENWOOD"}, {"src": "NBH_SYCAMORE_TOWNSHIP_CENTRAL", "dst": "INT_SYCAMORE_RD_KENWOOD"}, {"src": "INT_SYCAMORE_RD_KENWOOD", "dst": "BRG_KENWOOD_CREEK"}, {"src": "NBH_ZIG_ZAG_ROAD_CORRIDOR", "dst": "BRG_ZIG_ZAG_CREEK"}, {"src": "NBH_SWAIM_PARK_AREA", "dst": "BRG_ZIG_ZAG_CREEK"}, {"src": "BRG_ZIG_ZAG_CREEK", "dst": "INT_ZIG_ZAG_KENWOOD"}, {"src": "INT_ZIG_ZAG_KENWOOD", "dst": "BRG_KENWOOD_CREEK"}, {"src": "NBH_STEEPLECHASE", "dst": "INT_ZIG_ZAG_STEEPLECHASE"}, {"src": "NBH_ORCHARD_CLUB_ADJACENT", "dst": "INT_ZIG_ZAG_STEEPLECHASE"}, {"src": "INT_ZIG_ZAG_STEEPLECHASE", "dst": "BRG_ZIG_ZAG_CREEK"}, {"src": "NBH_WINDZAG_LANE_AREA", "dst": "INT_WINDZAG_ZIGZAG"}, {"src": "NBH_MONTGOMERY_NW", "dst": "INT_WINDZAG_ZIGZAG"}, {"src": "INT_WINDZAG_ZIGZAG", "dst": "BRG_ZIG_ZAG_CREEK"}, {"src": "NBH_MITCHELL_FARM", "dst": "INT_MONTGOMERY_MITCHELLFARM"}, {"src": "NBH_ORCHARD_CLUB", "dst": "INT_MONTGOMERY_MITCHELLFARM"}, {"src": "NBH_MONTGOMERY_RD_CORRIDOR", "dst": "INT_MONTGOMERY_MITCHELLFARM"}, {"src": "INT_MONTGOMERY_MITCHELLFARM", "dst": "INT_COOPER_ZIGZAG"}, {"src": "INT_COOPER_ZIGZAG", "dst": "BRG_COOPER_I71"}, {"src": "NBH_ORCHARD_CLUB", "dst": "INT_MONTGOMERY_ORCHARD_CLUB"}, {"src": "NBH_BETHESDA_NORTH_AREA", "dst": "INT_MONTGOMERY_ORCHARD_CLUB"}, {"src": "NBH_MONTGOMERY_FARMS", "dst": "INT_MONTGOMERY_ORCHARD_CLUB"}, {"src": "INT_MONTGOMERY_ORCHARD_CLUB", "dst": "INT_MONTGOMERY_MITCHELLFARM"}, {"src": "NBH_HARPERS_POINT", "dst": "BRG_REED_HARTMAN_I71"}, {"src": "NBH_BLUE_ASH_TECH_CORRIDOR", "dst": "BRG_REED_HARTMAN_I71"}, {"src": "NBH_REED_HARTMAN_ESTATES", "dst": "BRG_REED_HARTMAN_I71"}, {"src": "BRG_REED_HARTMAN_I71", "dst": "INT_COOPER_REED_HARTMAN"}, {"src": "INT_COOPER_REED_HARTMAN", "dst": "INT_COOPER_DELRAY"}, {"src": "NBH_SYCAMORE_HIGH_SCHOOL_AREA", "dst": "BRG_CORNELL_CREEK"}, {"src": "NBH_CORNELL_ESTATES", "dst": "BRG_CORNELL_CREEK"}, {"src": "NBH_BLUE_ASH_EAST", "dst": "BRG_CORNELL_CREEK"}, {"src": "BRG_CORNELL_CREEK", "dst": "INT_REED_HARTMAN_CORNELL"}, {"src": "INT_REED_HARTMAN_CORNELL", "dst": "BRG_REED_HARTMAN_I71"}, {"src": "NBH_CONREY_ROAD_AREA", "dst": "INT_CONREY_REED_HARTMAN"}, {"src": "NBH_SHS_CAMPUS_NEIGHBORHOOD", "dst": "INT_CONREY_REED_HARTMAN"}, {"src": "INT_CONREY_REED_HARTMAN", "dst": "BRG_REED_HARTMAN_I71"}, {"src": "NBH_KUGLER_MILL_ESTATES", "dst": "INT_KUGLER_MILL_CORNELL"}, {"src": "NBH_BLUE_ASH_NE", "dst": "INT_KUGLER_MILL_CORNELL"}, {"src": "INT_KUGLER_MILL_CORNELL", "dst": "BRG_CORNELL_CREEK"}, {"src": "NBH_GLENDALE_MILFORD_CORRIDOR", "dst": "BRG_GM_I275"}, {"src": "NBH_SYCAMORE_TOWNSHIP_N", "dst": "BRG_GM_I275"}, {"src": "NBH_EVENDALE_FRINGE", "dst": "BRG_GM_I275"}, {"src": "BRG_GM_I275", "dst": "BRG_GM_MUDDY_CREEK"}, {"src": "BRG_GM_MUDDY_CREEK", "dst": "INT_REED_HARTMAN_GM"}, {"src": "INT_REED_HARTMAN_GM", "dst": "BRG_REED_HARTMAN_I71"}, {"src": "NBH_SHARON_ROAD_AREA", "dst": "INT_GM_SHARON"}, {"src": "NBH_EVENDALE_FRINGE", "dst": "INT_GM_SHARON"}, {"src": "NBH_SHARONVILLE_BORDER", "dst": "INT_GM_SHARON"}, {"src": "INT_GM_SHARON", "dst": "BRG_GM_I275"}, {"src": "NBH_GROOMS_ROAD_AREA", "dst": "INT_GROOMS_GLENDALE_MILFORD"}, {"src": "NBH_PRINCETON_CSD_BORDER", "dst": "INT_GROOMS_GLENDALE_MILFORD"}, {"src": "NBH_EVENDALE_NW", "dst": "INT_GROOMS_GLENDALE_MILFORD"}, {"src": "INT_GROOMS_GLENDALE_MILFORD", "dst": "BRG_GM_I275"}, {"src": "NBH_READING_ROAD_CORRIDOR", "dst": "INT_GM_READING"}, {"src": "NBH_SYCAMORE_TOWNSHIP_W_BOUNDARY", "dst": "INT_GM_READING"}, {"src": "NBH_READING_CSD_BORDER", "dst": "INT_GM_READING"}, {"src": "INT_GM_READING", "dst": "BRG_GM_I275"}, {"src": "NBH_SYCAMORE_HS_AREA", "dst": "INT_WILLIAMSON_CORNELL"}, {"src": "INT_WILLIAMSON_CORNELL", "dst": "BRG_CORNELL_CREEK"}, {"src": "NBH_CREEK_RD_AREA", "dst": "INT_CREEK_GLENDALE_MILFORD"}, {"src": "INT_CREEK_GLENDALE_MILFORD", "dst": "BRG_GM_I275"}, {"src": "NBH_CARVER_WOODS_AREA", "dst": "INT_CARVER_KENWOOD"}, {"src": "INT_CARVER_KENWOOD", "dst": "BRG_KENWOOD_CREEK"}, {"src": "NBH_BLUEWING_TE_AREA", "dst": "INT_BLUEWING_GLENDALE_MILFORD"}, {"src": "INT_BLUEWING_GLENDALE_MILFORD", "dst": "BRG_GM_I275"}, {"src": "NBH_BRAMBLEWOOD_CR_AREA", "dst": "INT_BRAMBLEWOOD_KENWOOD"}, {"src": "INT_BRAMBLEWOOD_KENWOOD", "dst": "BRG_KENWOOD_CREEK"}, {"src": "NBH_BRATTLE_LN_AREA", "dst": "INT_BRATTLE_GRANDSTONE"}, {"src": "INT_BRATTLE_GRANDSTONE", "dst": "INT_GRANDSTONE_MONTGOMERY"}, {"src": "INT_GRANDSTONE_MONTGOMERY", "dst": "BRG_MONTGOMERY_CREEK"}, {"src": "NBH_GRANDSTONE_LN_AREA", "dst": "INT_GRANDSTONE_MONTGOMERY"}, {"src": "NBH_FOXHUNTER_LN_AREA", "dst": "INT_FOXHUNTER_HOPEWELL"}, {"src": "INT_FOXHUNTER_HOPEWELL", "dst": "INT_LOVELAND_MADEIRA_HOPEWELL"}, {"src": "INT_LOVELAND_MADEIRA_HOPEWELL", "dst": "INT_KEMPER_MONTGOMERY"}, {"src": "NBH_IVYGATE_LN_AREA", "dst": "INT_IVYGATE_MONTGOMERY"}, {"src": "INT_IVYGATE_MONTGOMERY", "dst": "BRG_MONTGOMERY_CREEK"}, {"src": "NBH_LIBERTY_HILL_AREA", "dst": "INT_LIBERTY_HILL_HOPEWELL"}, {"src": "INT_LIBERTY_HILL_HOPEWELL", "dst": "INT_LOVELAND_MADEIRA_HOPEWELL"}, {"src": "NBH_GREGORY_LN_AREA", "dst": "INT_GREGORY_MASON"}, {"src": "INT_GREGORY_MASON", "dst": "INT_FIELDS_ERTEL_MASON_MONTGOMERY"}, {"src": "NBH_HARBORTOWN_DR_AREA", "dst": "INT_HARBORTOWN_MASON"}, {"src": "INT_HARBORTOWN_MASON", "dst": "INT_FIELDS_ERTEL_MASON_MONTGOMERY"}, {"src": "NBH_CARRINGTON_AREA", "dst": "INT_CARRINGTON_UNION_CEM"}, {"src": "INT_CARRINGTON_UNION_CEM", "dst": "INT_UNION_CEMETERY_FIELDS_ERTEL"}, {"src": "NBH_CALUMET_AREA", "dst": "INT_CALUMET_SNIDER"}, {"src": "NBH_SPIRAL_AREA", "dst": "INT_CALUMET_SNIDER"}, {"src": "INT_CALUMET_SNIDER", "dst": "INT_SNIDER_KEMPER"}, {"src": "NBH_MARINERS_COVE_AREA", "dst": "INT_CALUMET_SNIDER"}, {"src": "NBH_ASHLEY_AVE_AREA", "dst": "INT_ASHLEY_KENWOOD"}, {"src": "INT_ASHLEY_KENWOOD", "dst": "BRG_KENWOOD_CREEK"}, {"src": "NBH_CONKLIN_RD_AREA", "dst": "INT_CONKLIN_KENWOOD"}, {"src": "INT_CONKLIN_KENWOOD", "dst": "BRG_KENWOOD_CREEK"}, {"src": "NBH_MONROE_AVE_AREA", "dst": "INT_MONROE_KENWOOD"}, {"src": "INT_MONROE_KENWOOD", "dst": "BRG_KENWOOD_CREEK"}, {"src": "NBH_LEGACY_CT_AREA", "dst": "INT_LEGACY_SNIDER"}, {"src": "INT_LEGACY_SNIDER", "dst": "INT_SNIDER_KEMPER"}];
+
+
+// ── Utility ──────────────────────────────────────────────────────────────
+function nodeColor(n, metric) {
+  if (n.label === 'School') return '#1a1714';
+  const s = n[metric];
+  if (metric === 'bc') {
+    if (s > 0.60) return '#c0392b';
+    if (s > 0.30) return '#e67e22';
+    if (s > 0.10) return '#f0a060';
+    return '#d8c4b0';
+  }
+  if (metric === 'pr') {
+    if (s > 0.40) return '#1a4a8a';
+    if (s > 0.15) return '#2980b9';
+    if (s > 0.05) return '#5ba4d4';
+    return '#b8c8de';
+  }
+  if (metric === 'ev') {
+    if (s > 0.25) return '#1e7e4a';
+    if (s > 0.05) return '#27ae60';
+    if (s > 0.01) return '#52c482';
+    return '#b8d8c0';
+  }
+}
+
+function nodeRadius(n, metric) {
+  const s = n[metric];
+  if (n.label === 'School') return 12;
+  if (n.label === 'Neighborhood') return Math.max(3, s * 14 + 2);
+  return Math.max(4, s * 26 + 3);
+}
+
+function strokeColor(n) {
+  if (n.label === 'Bridge') return '#1a1714';
+  return 'none';
+}
+
+// ── Tooltip ──────────────────────────────────────────────────────────────
+const tip = document.getElementById('tooltip');
+function showTip(evt, n) {
+  tip.innerHTML = `<strong>${n.id}</strong><br>
+    Type: ${n.label}<br>
+    BC: ${n.bc.toFixed(4)}<br>
+    PR: ${n.pr.toFixed(4)}<br>
+    EV: ${n.ev.toFixed(4)}`;
+  tip.style.opacity = '1';
+  moveTip(evt);
+}
+function moveTip(evt) {
+  tip.style.left = (evt.clientX + 14) + 'px';
+  tip.style.top  = (evt.clientY - 10) + 'px';
+}
+function hideTip() { tip.style.opacity = '0'; }
+
+// ── Build a panel ─────────────────────────────────────────────────────────
+function buildPanel(svgId, metric) {
+  const svgEl = document.getElementById(svgId);
+  const W = svgEl.parentElement.clientWidth  || 500;
+  const H = svgEl.parentElement.clientHeight || 500;
+
+  const svg = d3.select('#' + svgId)
+    .attr('width', W).attr('height', H);
+
+  // Clone node/edge data for this simulation
+  const nodesCopy = VIZ_NODES.map(d => ({...d}));
+  const nodesById = Object.fromEntries(nodesCopy.map(d => [d.id, d]));
+
+  const linksCopy = VIZ_EDGES
+    .filter(e => nodesById[e.src] && nodesById[e.dst])
+    .map(e => ({ source: nodesById[e.src], target: nodesById[e.dst] }));
+
+  // Edge layer
+  const linkG = svg.append('g').attr('class','links');
+  const link = linkG.selectAll('line')
+    .data(linksCopy).enter().append('line')
+    .attr('stroke','#c8c0b8').attr('stroke-width', 0.7).attr('stroke-opacity', 0.5);
+
+  // Node layer
+  const nodeG = svg.append('g').attr('class','nodes');
+  const node = nodeG.selectAll('circle')
+    .data(nodesCopy).enter().append('circle')
+    .attr('r', d => nodeRadius(d, metric))
+    .attr('fill', d => nodeColor(d, metric))
+    .attr('stroke', d => strokeColor(d))
+    .attr('stroke-width', d => d.label === 'Bridge' ? 1.5 : 0)
+    .style('cursor','pointer')
+    .on('mouseover', (evt, d) => showTip(evt, d))
+    .on('mousemove', moveTip)
+    .on('mouseout',  hideTip);
+
+  // Force simulation — use lat/lng for initial positions, scaled to canvas
+  const lats = nodesCopy.filter(d=>d.lat).map(d=>d.lat);
+  const lngs = nodesCopy.filter(d=>d.lng).map(d=>d.lng);
+  const latMin = Math.min(...lats), latMax = Math.max(...lats);
+  const lngMin = Math.min(...lngs), lngMax = Math.max(...lngs);
+  const pad = 60;
+
+  nodesCopy.forEach(d => {
+    if (d.lat && d.lng) {
+      // Map lat/lng to canvas (invert lat so north is up)
+      d.x = pad + (d.lng - lngMin) / (lngMax - lngMin) * (W - pad*2);
+      d.y = pad + (1 - (d.lat - latMin) / (latMax - latMin)) * (H - pad*2);
+    } else {
+      d.x = W/2 + (Math.random()-0.5)*100;
+      d.y = H/2 + (Math.random()-0.5)*100;
+    }
+  });
+
+  const sim = d3.forceSimulation(nodesCopy)
+    .force('link', d3.forceLink(linksCopy).id(d=>d.id).distance(18).strength(0.15))
+    .force('charge', d3.forceManyBody().strength(-35))
+    .force('collision', d3.forceCollide(d => nodeRadius(d,metric) + 2))
+    .force('x', d3.forceX(d => d.x).strength(0.4))
+    .force('y', d3.forceY(d => d.y).strength(0.4))
+    .alpha(0.6).alphaDecay(0.025)
+    .on('tick', () => {
+      link
+        .attr('x1', d => d.source.x).attr('y1', d => d.source.y)
+        .attr('x2', d => d.target.x).attr('y2', d => d.target.y);
+      node
+        .attr('cx', d => d.x).attr('cy', d => d.y);
+    });
+
+  // Drag
+  node.call(d3.drag()
+    .on('start', (evt,d) => { if(!evt.active) sim.alphaTarget(0.3).restart(); d.fx=d.x; d.fy=d.y; })
+    .on('drag',  (evt,d) => { d.fx=evt.x; d.fy=evt.y; })
+    .on('end',   (evt,d) => { if(!evt.active) sim.alphaTarget(0); d.fx=null; d.fy=null; })
+  );
+
+  // Zoom
+  svg.call(d3.zoom().scaleExtent([0.3,5]).on('zoom', evt => {
+    linkG.attr('transform', evt.transform);
+    nodeG.attr('transform', evt.transform);
+  }));
+}
+
+// Build all three panels after layout settles
+window.addEventListener('load', () => {
+  buildPanel('svg-bc', 'bc');
+  buildPanel('svg-pr', 'pr');
+  buildPanel('svg-ev', 'ev');
+});
+</script>
+</body>
 </html>
